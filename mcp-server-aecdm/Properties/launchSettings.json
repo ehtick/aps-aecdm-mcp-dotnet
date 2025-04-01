@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "mcp-server-aecdm": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "clientid": "asdasda"
+      }
+    }
+  }
+}
