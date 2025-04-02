@@ -112,4 +112,38 @@ public static class AECDMTools
 
 		return elementGroups.ToString();
 	}
+
+	[McpServerTool, Description("Get the Elements from the ElementGroup using a category filter. Possible categories are: Walls, Windows, Floors, Doors, Furniture, Ceilings, Electrical Equipment")]
+	public static async Task<string> GetElementsByElementGroupWithCategoryFilter([Description("ElementGroup id used to query the elements from")] string elementGroupId, [Description("Category name to be used as filter. Possible categories are: Walls, Windows, Floors, Doors, Furniture, Ceilings, Electrical Equipment")] string category)
+	{
+		var query = new GraphQLRequest
+		{
+			Query = @"
+			query GetElementsByElementGroupWithFilter ($elementGroupId: ID!, $filter: String!) {
+			  elementsByElementGroup(elementGroupId: $elementGroupId, filter: {query:$filter}) {
+			    results{
+			      id
+			      name
+			      properties {
+			        results {
+			            name
+			            value
+			        }
+			      }
+			    }
+			  }
+			}",
+			Variables = new
+			{
+				elementGroupId = elementGroupId,
+				filter = $"property.name.category=={category}"
+			}
+		};
+		object data = await Query(query);
+
+		JObject jsonData = JObject.FromObject(data);
+		JToken elements = jsonData.SelectToken("elementsByElementGroup.results");
+
+		return elements.ToString();
+	}
 }
