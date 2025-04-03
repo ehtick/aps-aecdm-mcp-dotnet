@@ -3,7 +3,6 @@ using System.ComponentModel;
 using GraphQL.Client.Http;
 using GraphQL.Client.Serializer.Newtonsoft;
 using GraphQL;
-using ModelContextProtocol.Protocol.Messages;
 using Newtonsoft.Json.Linq;
 
 namespace mcp_server_aecdm.Tools;
@@ -108,9 +107,27 @@ public static class AECDMTools
 		object data = await Query(query);
 
 		JObject jsonData = JObject.FromObject(data);
-		JToken elementGroups = jsonData.SelectToken("elementGroupsByProject.results");
+		JArray elementGroups = (JArray)jsonData.SelectToken("elementGroupsByProject.results");
 
-		return elementGroups.ToString();
+		List<ElementGroup> elementGroupsList = new List<ElementGroup>();
+		//Loop through elementGroups
+		foreach (var elementGroup in elementGroups.ToList())
+		{
+			try
+			{
+				ElementGroup newElementGroup = new ElementGroup();
+				newElementGroup.id = elementGroup.SelectToken("id").ToString();
+				newElementGroup.name = elementGroup.SelectToken("name").ToString();
+				newElementGroup.fileVersionUrn = elementGroup.SelectToken("alternativeIdentifiers.fileVersionUrn").ToString();
+				elementGroupsList.Add(newElementGroup);
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine(ex.Message);
+			}
+		}
+		string elementGroupsString = elementGroupsList.Select(eg => $"name: {eg.name}, id: {eg.id}, fileVersionUrn: {eg.fileVersionUrn}").Aggregate((a, b) => $"{a}, {b}");
+		return elementGroupsString;
 	}
 
 	[McpServerTool, Description("Get the Elements from the ElementGroup using a category filter. Possible categories are: Walls, Windows, Floors, Doors, Furniture, Ceilings, Electrical Equipment")]
@@ -142,8 +159,78 @@ public static class AECDMTools
 		object data = await Query(query);
 
 		JObject jsonData = JObject.FromObject(data);
-		JToken elements = jsonData.SelectToken("elementsByElementGroup.results");
+		JArray elements = (JArray)jsonData.SelectToken("elementsByElementGroup.results");
 
-		return elements.ToString();
+		List<Element> elementsList = new List<Element>();
+		//Loop through elements 
+		foreach (var element in elements.ToList())
+		{
+			try
+			{
+				Element newElement = new Element();
+				newElement.id = element.SelectToken("id").ToString();
+				newElement.name = element.SelectToken("name").ToString();
+				newElement.properties = new List<Property>();
+				JArray properties = (JArray)element.SelectToken("properties.results");
+				foreach (JToken property in properties.ToList())
+				{
+					try
+					{
+						newElement.properties.Add(new Property
+						{
+							name = property.SelectToken("name").ToString(),
+							value = property.SelectToken("value").ToString()
+						});
+					}
+					catch (Exception ex)
+					{
+            Console.WriteLine(ex.Message);
+					}
+				}
+				elementsList.Add(newElement);
+			}
+			catch (Exception ex)
+			{
+        Console.WriteLine(ex.Message);
+			}
+		}
+
+		string elementsString = elementsList.Select(el => $"name: {el.name}, id: {el.id}, {el.properties.Select(p => $"{p.name}:{p.value}").Aggregate((a,b) => $"{a}, {b}")}").Aggregate((a, b) => $"{a}, {b}");
+		return elementsString;
+	}
+}
+
+internal class ElementGroup
+{
+	internal string id { get; set; }
+	internal string name { get; set; }
+	internal string fileVersionUrn { get; set; }
+
+	public override string ToString()
+	{
+		return $"id: {id}, name: {name}, fileVersionUrn: {fileVersionUrn}";
+	}
+}
+
+internal class Element
+{
+	internal string id { get; set; }
+	internal string name { get; set; }
+	internal List<Property> properties { get; set; }
+
+	public override string ToString()
+	{
+		return $"id: {id}, name: {name}, properties: {
+			properties.Select(p => $"name: {p.name}, value: {p.value}").Aggregate((a, b) => $"{a}, {b}")}";
+	}
+}
+
+internal class Property
+{
+	internal string name { get; set; }
+	internal string value { get; set; }
+	public override string ToString()
+	{
+		return $"name: {name}, value: {value}";
 	}
 }

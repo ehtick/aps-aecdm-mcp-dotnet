@@ -68,6 +68,8 @@
   var _access_token = null;
   //REPLACE THE URN HERE
   var _urn = null;
+  //REPLACE THE EXTERNAL IDS HERE
+  var externalIds = null;
 
   async function initAPSViewer() {
     await getToken();
@@ -95,6 +97,18 @@
       console.log(event);
       viewer.addEventListener(Autodesk.Viewing.TEXTURES_LOADED_EVENT, () => {
         console.log('Textures loaded');
+        viewer.addEventListener(Autodesk.Viewing.TEXTURES_LOADED_EVENT, () => {
+          console.log('Textures loaded');
+          viewer.model.getExternalIdMapping((externalIdsDictionary) => {
+            let dbids = [];
+            externalIds.forEach(externalId => {
+              let dbid = externalIdsDictionary[externalId];
+              if (!!dbid)
+                dbids.push(dbid);
+            });
+            viewer.isolate(dbids);
+            viewer.fitToView();
+          }, console.log)
       });
     }
   }
