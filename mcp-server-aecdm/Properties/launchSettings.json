@@ -3,7 +3,7 @@
     "mcp-server-aecdm": {
       "commandName": "Project",
       "environmentVariables": {
-        "clientid": "asdasda"
+        "CLIENT_ID": "rJW5G6ax4vsj2ilF7SZefIAf10Tmi0fCRRqGKItt0IEx6Wmq"
       }
     }
   }

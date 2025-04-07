@@ -25,8 +25,8 @@ public static class AuthTools
 		string codeVerifier = RandomString(64);
 		string codeChallenge = GenerateCodeChallenge(codeVerifier);
 		Global.codeVerifier = codeVerifier;
-		//read from environment variables
-		Global.ClientId = "rJW5G6ax4vsj2ilF7SZefIAf10Tmi0fCRRqGKItt0IEx6Wmq";
+		//read client id from env variable
+		Global.ClientId = Environment.GetEnvironmentVariable("CLIENT_ID");
 		Global.CallbackURL = "http://localhost:8080/";
 		Global.Scopes = "data:read";
 		await redirectToLogin(codeChallenge);
