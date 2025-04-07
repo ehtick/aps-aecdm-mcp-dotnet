@@ -184,20 +184,90 @@ public static class AECDMTools
 					}
 					catch (Exception ex)
 					{
-            Console.WriteLine(ex.Message);
+						Console.WriteLine(ex.Message);
 					}
 				}
 				elementsList.Add(newElement);
 			}
 			catch (Exception ex)
 			{
-        Console.WriteLine(ex.Message);
+				Console.WriteLine(ex.Message);
 			}
 		}
 
-		string elementsString = elementsList.Select(el => $"name: {el.name}, id: {el.id}, {el.properties.Select(p => $"{p.name}:{p.value}").Aggregate((a,b) => $"{a}, {b}")}").Aggregate((a, b) => $"{a}, {b}");
+		string elementsString = elementsList.Select(el => $"name: {el.name}, id: {el.id}, {el.properties.Select(p => $"{p.name}:{p.value}").Aggregate((a, b) => $"{a}, {b}")}").Aggregate((a, b) => $"{a}, {b}");
 		return elementsString;
 	}
+
+	//[McpServerTool, Description("Get the Elements from the ElementGroup using a properties and filter. Possible categories are: Walls, Windows, Floors, Doors, Furniture, Ceilings, Electrical Equipment")]
+	//public static async Task<string> GetElementsByElementGroupWithCategoriesFilter([Description("ElementGroup id used to query the elements from")] string elementGroupId, [Description("Category name to be used as filter. Possible categories are: Walls, Windows, Floors, Doors, Furniture, Ceilings, Electrical Equipment")] string category)
+	//{
+	//	var query = new GraphQLRequest
+	//	{
+	//		Query = @"
+	//		query GetElementsByElementGroupWithFilter ($elementGroupId: ID!, $filter: String!, $propertiesNames: [String!]!) {
+	//		  elementsByElementGroup(elementGroupId: $elementGroupId, filter: {query:$filter}) {
+	//		    results{
+	//		      id
+	//		      name
+	//		      properties (filter:{names:$propertiesNames}){
+	//		        results {
+	//		            name
+	//		            value
+	//		        }
+	//		      }
+	//		    }
+	//		  }
+	//		}",
+	//		Variables = new
+	//		{
+	//			elementGroupId = elementGroupId,
+	//			filter = $"property.name.category=='{category}'",
+	//			propertiesNames = new string[] { "External ID", "Area" }
+	//		}
+	//	};
+	//	object data = await Query(query);
+
+	//	JObject jsonData = JObject.FromObject(data);
+	//	JArray elements = (JArray)jsonData.SelectToken("elementsByElementGroup.results");
+
+	//	List<Element> elementsList = new List<Element>();
+	//	//Loop through elements 
+	//	foreach (var element in elements.ToList())
+	//	{
+	//		try
+	//		{
+	//			Element newElement = new Element();
+	//			newElement.id = element.SelectToken("id").ToString();
+	//			newElement.name = element.SelectToken("name").ToString();
+	//			newElement.properties = new List<Property>();
+	//			JArray properties = (JArray)element.SelectToken("properties.results");
+	//			foreach (JToken property in properties.ToList())
+	//			{
+	//				try
+	//				{
+	//					newElement.properties.Add(new Property
+	//					{
+	//						name = property.SelectToken("name").ToString(),
+	//						value = property.SelectToken("value").ToString()
+	//					});
+	//				}
+	//				catch (Exception ex)
+	//				{
+	//					Console.WriteLine(ex.Message);
+	//				}
+	//			}
+	//			elementsList.Add(newElement);
+	//		}
+	//		catch (Exception ex)
+	//		{
+	//			Console.WriteLine(ex.Message);
+	//		}
+	//	}
+
+	//	string elementsString = elementsList.Select(el => $"name: {el.name}, id: {el.id}, {el.properties.Select(p => $"{p.name}:{p.value}").Aggregate((a, b) => $"{a}, {b}")}").Aggregate((a, b) => $"{a}, {b}");
+	//	return elementsString;
+	//}
 }
 
 internal class ElementGroup
