@@ -22,10 +22,7 @@ To make this work, you'll need to:
 - Build this project
 - Add a reference to the .csproj in the Claude configuration file (developers resource)
 
-Refer to the video below:
-<video width="640" height="480" src="https://www.youtube.com/watch?v=qyUeNS84Ldc" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen>
-</video>
-
+## [DEMO VIDEO HERE](https://youtu.be/GlCYJQfUFWU)
 
 ## How it works
 
@@ -57,6 +54,23 @@ Clone this project or download it. It's recommended to install [GitHub desktop](
 
 Replace **client_id** with your own key (Single Page application).
 You can do it directly in the 'Properties/lauchSettings.json' file or through Visual Studio UI under the debug properties.
+
+You'll need to add a reference to your MCP server in the `claude_desktop_congif.json` file
+```json
+{
+    "mcpServers": {
+      "aecdm": {
+            "command": "dotnet",
+            "args": [
+                "run",
+                "--project",
+                "C:\\Users\\...mcp-server-aecdm.csproj",
+                "--no-build"
+            ]
+        }
+    }
+}
+```
 
 # Further Reading
 
