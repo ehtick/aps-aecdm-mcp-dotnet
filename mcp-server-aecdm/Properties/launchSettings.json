@@ -3,7 +3,7 @@
     "mcp-server-aecdm": {
       "commandName": "Project",
       "environmentVariables": {
-        "CLIENT_ID": "rJW5G6ax4vsj2ilF7SZefIAf10Tmi0fCRRqGKItt0IEx6Wmq"
+        "CLIENT_ID": "YOUR CLIENT ID HERE (PKCE FLOW)"
       }
     }
   }
