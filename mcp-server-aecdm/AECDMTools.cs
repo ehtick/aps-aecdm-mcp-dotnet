@@ -82,7 +82,7 @@ public static class AECDMTools
 		return projectsResults.ToString();
 	}
 
-	[McpServerTool, Description("Get the ACC folders from one project")]
+	[McpServerTool, Description("Get the ACC ElementGroups from one project")]
 	public static async Task<string> GetElementGroupsByProject([Description("Project id used to query the elemengroups from")]string projectId)
 	{
 		var query = new GraphQLRequest
