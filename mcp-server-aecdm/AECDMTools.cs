@@ -316,6 +316,58 @@ public static class AECDMTools
         }
         return path;
     }
+
+
+
+
+    [McpServerTool, Description("Export Mesh data for the selected elements")]
+    public static async Task<string> ExportMeshForElements(
+        [Description("Array of element ids!")] string[] elementIds)
+    {
+        try
+        {
+            var elementGroup = Autodesk.Data.DataModels.ElementGroup.Create(Global.SDKClient);
+            var aecdmService = new AECDMService(Global.SDKClient);
+
+            List<AECDMElement> elements = new List<AECDMElement>();
+            var tasks = elementIds.ToList().Select(async (item) =>
+            {
+                var element = await aecdmService.GetElementData(item);
+                elements.Add(element.Data.ElementAtTip);
+            });
+            await Task.WhenAll(tasks);
+
+            // Alternatively, add elements in a batch
+            elementGroup.AddAECDMElements(elements);
+            //Get ElementGeometriesAsMesh
+            var ElementGeomMap = await elementGroup.GetElementGeometriesAsMeshAsync().ConfigureAwait(false);
+
+            foreach (KeyValuePair<Autodesk.Data.DataModels.Element, IEnumerable<ElementGeometry>> kv in ElementGeomMap)
+            {
+                var element = kv.Key;
+                var meshObjList = kv.Value;
+                Console.WriteLine($"Element ID: {element.Id} has {meshObjList.Count()} meshes");
+                foreach (var meshObj in meshObjList)
+                {
+                    if (meshObj is Autodesk.Data.DataModels.MeshGeometry meshGeometry)
+                    {
+                        // Do something with the mesh object, e.g., print its properties
+                        Console.WriteLine($"Mesh Vertices Count: {meshGeometry.Mesh?.Vertices.Count}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Element ID: {element.Id} has no geometry.");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\nApplication failed with error: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+        }
+        return "Mesh are generated";
+    }
 }
 
 internal class ElementGroup
