@@ -10,6 +10,7 @@ using mcp_server_aecdm;
 using System.Security.Cryptography;
 using Newtonsoft.Json.Linq;
 using System.Web;
+using mcp_server_aecdm.Tools;
 
 var builder = Host.CreateEmptyApplicationBuilder(settings: null);
 

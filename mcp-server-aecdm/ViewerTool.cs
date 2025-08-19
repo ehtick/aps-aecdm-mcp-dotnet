@@ -31,11 +31,11 @@ namespace mcp_server_aecdm
 		[McpServerTool, Description("Render one model with Autodesk Viewer.")]
 		public static async Task<string> RenderModel([Description("urn used to render the model with Viewer")] string fileVersionUrn)
 		{
-			//base64 encode the urn
-			string urnBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(fileVersionUrn));
+			//workaround for the wrong version urn.
+			fileVersionUrn = fileVersionUrn.Replace("dm.lineage:", "fs.file:vf.");
 
-			//return an html page as string
-			string htmlContent = @"
+            //return an html page as string
+            string htmlContent = @"
 <!DOCTYPE html>
 <html>
 
@@ -53,10 +53,8 @@ namespace mcp_server_aecdm
 <script>
 
   let viewer = null;
-  //REPLACE THE TOKEN HERE
-  var _access_token = '" + Global.AccessToken+@"';
-  //REPLACE THE URN HERE
-  var _urn = '"+ urnBase64 + @"';
+  var _access_token = '" + Global.AccessToken+ @"';
+  var _urn = Autodesk.Viewing.toUrlSafeBase64( '"+ fileVersionUrn + @"');
 
 	let socket = new WebSocket('ws://localhost:8081');
   socket.onmessage = function(event) {
@@ -75,7 +73,7 @@ namespace mcp_server_aecdm
 
   async function initAPSViewer() {
     const options = {
-      env: 'AutodeskProduction',
+      env: 'AutodeskStaging2',
       accessToken: _access_token,
       isAEC: true
     };
