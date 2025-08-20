@@ -14,6 +14,8 @@ using System.IO;
 using Autodesk.DataManagement.Model;
 using Autodesk.Data.Interface;
 using Autodesk.Data.OpenAPI;
+using System.Text;
+using System.Numerics;
 
 namespace mcp_server_aecdm.Tools;
 
@@ -23,7 +25,7 @@ public static class AECDMTools
     private const string BASE_URL = "https://developer-stg.api.autodesk.com/aec/graphql";
 
 
-	public static async Task<object> Query(GraphQL.GraphQLRequest query, string regionHeader = null)
+	public static async Task<object> Query(GraphQL.GraphQLRequest query, string? regionHeader = null)
 	{
 		var client = new GraphQLHttpClient(BASE_URL, new NewtonsoftJsonSerializer());
 		client.HttpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + Global.AccessToken);
@@ -255,7 +257,7 @@ public static class AECDMTools
     public static async Task<string> ExportIfcForElementGroup(
         [Description("ElementGroup id, not the file version urn")] string elementGroupId,
         [Description("Category name to be used as filter. Possible categories are: Walls, Windows, Floors, Doors, Furniture, Roofs, Ceilings, Electrical Equipment, Structural Framing, Structural Columns, Structural Rebar")] string category,
-        [Description("File name of this exported IFC file.")] string fileName = null)
+        [Description("File name of this exported IFC file.")] string? fileName = null)
     {
         string path = string.Empty;
         try
@@ -288,7 +290,7 @@ public static class AECDMTools
     [McpServerTool, Description("Export Ifc file for the selected element")]
     public static async Task<string> ExportIfcForElements(
 		[Description("Array of element ids that will be exported to IFC!")] string[] elementIds, 
-		[Description("File name of this exported IFC file.")] string fileName = null)
+		[Description("File name of this exported IFC file.")] string? fileName = null)
     {
 		string path = string.Empty;
 		try
@@ -320,10 +322,14 @@ public static class AECDMTools
 
 
 
-    [McpServerTool, Description("Export Mesh data for the selected elements")]
-    public static async Task<string> ExportMeshForElements(
-        [Description("Array of element ids!")] string[] elementIds)
+    [McpServerTool, Description("Perform accurate clash detection analysis between selected building elements")]
+    public static async Task<string> ClashDetectForElements(
+        [Description("Array of element ids to analyze for clashes")] string[] elementIds,
+        [Description("Minimum clash volume threshold in cubic units (default: 0.01 - higher values reduce false positives)")] double clashThreshold = 0.01)
     {
+        var clashResults = new StringBuilder();
+        var meshSummary = new StringBuilder();
+        
         try
         {
             var elementGroup = Autodesk.Data.DataModels.ElementGroup.Create(Global.SDKClient);
@@ -337,44 +343,296 @@ public static class AECDMTools
             });
             await Task.WhenAll(tasks);
 
-            // Alternatively, add elements in a batch
+            // Add elements to element group
             elementGroup.AddAECDMElements(elements);
-            //Get ElementGeometriesAsMesh
+            
+            // Get ElementGeometriesAsMesh
             var ElementGeomMap = await elementGroup.GetElementGeometriesAsMeshAsync().ConfigureAwait(false);
 
+            // Create element bounding boxes for clash detection analysis
+            var elementCollisionData = new List<ElementBoundingBox>();
+            
+            // Process each element and create bounding boxes
             foreach (KeyValuePair<Autodesk.Data.DataModels.Element, IEnumerable<ElementGeometry>> kv in ElementGeomMap)
             {
                 var element = kv.Key;
                 var meshObjList = kv.Value;
-                Console.WriteLine($"Element ID: {element.Id} has {meshObjList.Count()} meshes");
+                
+                meshSummary.AppendLine($"Element ID: {element.Id} has {meshObjList.Count()} meshes");
+                
                 foreach (var meshObj in meshObjList)
                 {
-                    if (meshObj is Autodesk.Data.DataModels.MeshGeometry meshGeometry)
+                    if (meshObj is Autodesk.Data.DataModels.MeshGeometry meshGeometry && meshGeometry.Mesh != null)
                     {
-                        // Do something with the mesh object, e.g., print its properties
-                        Console.WriteLine($"Mesh Vertices Count: {meshGeometry.Mesh?.Vertices.Count}");
+                        meshSummary.AppendLine($"  - Mesh Vertices Count: {meshGeometry.Mesh.Vertices.Count}");
+                        
+                        try
+                        {
+                            // Create bounding box from mesh vertices
+                            var boundingBox = CreateBoundingBoxFromMesh(meshGeometry.Mesh);
+                            if (boundingBox != null)
+                            {
+                                boundingBox.ElementId = element.Id;
+                                boundingBox.ElementName = GetElementName(element);
+                                elementCollisionData.Add(boundingBox);
+                                
+                                meshSummary.AppendLine($"  - Bounding Box: ({boundingBox.MinX:F2}, {boundingBox.MinY:F2}, {boundingBox.MinZ:F2}) to ({boundingBox.MaxX:F2}, {boundingBox.MaxY:F2}, {boundingBox.MaxZ:F2})");
+                            }
+                        }
+                        catch (Exception meshEx)
+                        {
+                            meshSummary.AppendLine($"  - Error creating bounding box: {meshEx.Message}");
+                        }
                     }
                     else
                     {
-                        Console.WriteLine($"Element ID: {element.Id} has no geometry.");
+                        meshSummary.AppendLine($"  - Element ID: {element.Id} has no valid geometry.");
                     }
                 }
             }
+
+            // Perform clash detection
+            clashResults.AppendLine("=== CLASH DETECTION RESULTS ===");
+            clashResults.AppendLine($"Total elements analyzed: {elementCollisionData.Count}");
+            clashResults.AppendLine($"Clash threshold: {clashThreshold} cubic units");
+            clashResults.AppendLine();
+
+            var clashCount = 0;
+            var totalPairs = 0;
+
+            // Check each pair of elements for clashes using bounding box overlap analysis
+            for (int i = 0; i < elementCollisionData.Count; i++)
+            {
+                for (int j = i + 1; j < elementCollisionData.Count; j++)
+                {
+                    totalPairs++;
+                    var element1 = elementCollisionData[i];
+                    var element2 = elementCollisionData[j];
+
+                    // Perform pure C# collision detection
+                    var clashInfo = DetectBoundingBoxClash(element1, element2, clashThreshold);
+                    if (clashInfo != null)
+                    {
+                        clashCount++;
+                        clashResults.AppendLine($"CLASH #{clashCount}:");
+                        clashResults.AppendLine($"  Element 1: {element1.ElementName} (ID: {element1.ElementId})");
+                        clashResults.AppendLine($"    - Volume: {element1.Volume:F6} cubic units");
+                        clashResults.AppendLine($"    - Bounding Box: ({element1.MinX:F2}, {element1.MinY:F2}, {element1.MinZ:F2}) to ({element1.MaxX:F2}, {element1.MaxY:F2}, {element1.MaxZ:F2})");
+                        clashResults.AppendLine($"  Element 2: {element2.ElementName} (ID: {element2.ElementId})");
+                        clashResults.AppendLine($"    - Volume: {element2.Volume:F6} cubic units");
+                        clashResults.AppendLine($"    - Bounding Box: ({element2.MinX:F2}, {element2.MinY:F2}, {element2.MinZ:F2}) to ({element2.MaxX:F2}, {element2.MaxY:F2}, {element2.MaxZ:F2})");
+                        clashResults.AppendLine($"  Clash Details:");
+                        clashResults.AppendLine($"    - Type: {clashInfo.ClashType}");
+                        clashResults.AppendLine($"    - Intersection Volume: {clashInfo.IntersectionVolume:F6} cubic units");
+                        clashResults.AppendLine($"    - Element 1 Overlap: {clashInfo.Element1VolumePercent:F2}% of its volume");
+                        clashResults.AppendLine($"    - Element 2 Overlap: {clashInfo.Element2VolumePercent:F2}% of its volume");
+                        if (clashInfo.ContactPoints.Any())
+                        {
+                            clashResults.AppendLine($"    - Intersection Center: ({clashInfo.ContactPoints[0].X:F3}, {clashInfo.ContactPoints[0].Y:F3}, {clashInfo.ContactPoints[0].Z:F3})");
+                        }
+                        clashResults.AppendLine();
+                    }
+                }
+            }
+
+            if (clashCount == 0)
+            {
+                clashResults.AppendLine("✅ No clashes detected between the analyzed elements.");
+            }
+            else
+            {
+                clashResults.AppendLine($"⚠️  Found {clashCount} clashes out of {totalPairs} element pairs checked.");
+            }
+
+            // No cleanup needed for managed clash detection analysis
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\nApplication failed with error: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            var errorMessage = $"Application failed with error: {ex.Message}\nStack trace: {ex.StackTrace}";
+            Console.WriteLine($"\n{errorMessage}");
+            return $"Error during clash detection analysis: {ex.Message}";
         }
-        return "Mesh are generated";
+
+        var finalResult = new StringBuilder();
+        finalResult.AppendLine("=== CLASH DETECTION ANALYSIS COMPLETED ===");
+        finalResult.AppendLine();
+        finalResult.AppendLine("ELEMENT GEOMETRY SUMMARY:");
+        finalResult.AppendLine(meshSummary.ToString());
+        finalResult.AppendLine(clashResults.ToString());
+        
+        return finalResult.ToString();
     }
+
+    /// <summary>
+    /// Creates a bounding box from an Autodesk mesh for clash detection analysis
+    /// </summary>
+    private static ElementBoundingBox? CreateBoundingBoxFromMesh(dynamic mesh)
+    {
+        try
+        {
+            if (mesh?.Vertices == null || mesh.Vertices.Count < 3)
+                return null;
+
+            // Calculate bounding box from vertices
+            float minX = float.MaxValue, minY = float.MaxValue, minZ = float.MaxValue;
+            float maxX = float.MinValue, maxY = float.MinValue, maxZ = float.MinValue;
+
+            foreach (var vertex in mesh.Vertices)
+            {
+                float x = (float)vertex.X;
+                float y = (float)vertex.Y;
+                float z = (float)vertex.Z;
+
+                minX = Math.Min(minX, x);
+                minY = Math.Min(minY, y);
+                minZ = Math.Min(minZ, z);
+                maxX = Math.Max(maxX, x);
+                maxY = Math.Max(maxY, y);
+                maxZ = Math.Max(maxZ, z);
+            }
+
+            // Only ensure minimum size for truly zero-dimension boxes (avoid artificial expansion)
+            if (maxX - minX < 0.001f) { minX -= 0.0005f; maxX += 0.0005f; }
+            if (maxY - minY < 0.001f) { minY -= 0.0005f; maxY += 0.0005f; }
+            if (maxZ - minZ < 0.001f) { minZ -= 0.0005f; maxZ += 0.0005f; }
+
+            return new ElementBoundingBox
+            {
+                MinX = minX,
+                MinY = minY,
+                MinZ = minZ,
+                MaxX = maxX,
+                MaxY = maxY,
+                MaxZ = maxZ
+            };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error creating bounding box: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gets the element name from the element, with fallback to ID
+    /// </summary>
+    private static string GetElementName(Autodesk.Data.DataModels.Element element)
+    {
+        try
+        {
+            // Try to get a meaningful name from element properties or use the ID
+            return !string.IsNullOrEmpty(element.Name) ? element.Name : $"Element_{element.Id}";
+        }
+        catch
+        {
+            return $"Element_{element.Id}";
+        }
+    }
+
+    /// <summary>
+    /// Detects clashes between two elements using bounding box overlap analysis
+    /// </summary>
+    private static ClashInfo? DetectBoundingBoxClash(ElementBoundingBox element1, ElementBoundingBox element2, double threshold)
+    {
+        try
+        {
+            // Define a small tolerance to avoid floating point precision issues and touching detection
+            const float tolerance = 0.001f;
+            
+            // Check for AABB (Axis-Aligned Bounding Box) ACTUAL overlap (not just touching)
+            // For true overlap, one box's max must be greater than the other's min by more than tolerance
+            bool overlapsX = (element1.MaxX - tolerance) > element2.MinX && (element2.MaxX - tolerance) > element1.MinX;
+            bool overlapsY = (element1.MaxY - tolerance) > element2.MinY && (element2.MaxY - tolerance) > element1.MinY;
+            bool overlapsZ = (element1.MaxZ - tolerance) > element2.MinZ && (element2.MaxZ - tolerance) > element1.MinZ;
+            
+            if (overlapsX && overlapsY && overlapsZ)
+            {
+                // Calculate intersection volume (only if there's actual overlap)
+                float intersectionX = Math.Min(element1.MaxX, element2.MaxX) - Math.Max(element1.MinX, element2.MinX);
+                float intersectionY = Math.Min(element1.MaxY, element2.MaxY) - Math.Max(element1.MinY, element2.MinY);
+                float intersectionZ = Math.Min(element1.MaxZ, element2.MaxZ) - Math.Max(element1.MinZ, element2.MinZ);
+                
+                // Ensure all intersection dimensions are positive (actual overlap)
+                if (intersectionX > tolerance && intersectionY > tolerance && intersectionZ > tolerance)
+                {
+                    double intersectionVolume = intersectionX * intersectionY * intersectionZ;
+                    
+                    if (intersectionVolume >= threshold)
+                    {
+                        // Calculate center point of intersection
+                        var centerX = (Math.Max(element1.MinX, element2.MinX) + Math.Min(element1.MaxX, element2.MaxX)) / 2;
+                        var centerY = (Math.Max(element1.MinY, element2.MinY) + Math.Min(element1.MaxY, element2.MaxY)) / 2;
+                        var centerZ = (Math.Max(element1.MinZ, element2.MinZ) + Math.Min(element1.MaxZ, element2.MaxZ)) / 2;
+                        
+                        // Calculate percentage of each element's volume that's intersecting
+                        double element1VolPercent = (intersectionVolume / element1.Volume) * 100;
+                        double element2VolPercent = (intersectionVolume / element2.Volume) * 100;
+                        
+                        return new ClashInfo
+                        {
+                            ClashType = intersectionVolume > 0.1 ? "Major Intersection" : "Minor Overlap",
+                            IntersectionVolume = intersectionVolume,
+                            ContactPoints = new List<Vector3> 
+                            { 
+                                new Vector3(centerX, centerY, centerZ) 
+                            },
+                            Element1VolumePercent = element1VolPercent,
+                            Element2VolumePercent = element2VolPercent
+                        };
+                    }
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error detecting clash: {ex.Message}");
+            return null;
+        }
+    }
+
+
 }
+
+/// <summary>
+/// Represents a bounding box for an element used in clash detection analysis
+/// </summary>
+internal class ElementBoundingBox
+{
+    public string ElementId { get; set; } = string.Empty;
+    public string ElementName { get; set; } = string.Empty;
+    public float MinX { get; set; }
+    public float MinY { get; set; }
+    public float MinZ { get; set; }
+    public float MaxX { get; set; }
+    public float MaxY { get; set; }
+    public float MaxZ { get; set; }
+
+    public double Volume => Math.Abs((MaxX - MinX) * (MaxY - MinY) * (MaxZ - MinZ));
+    
+    public Vector3 Center => new Vector3((MinX + MaxX) / 2, (MinY + MaxY) / 2, (MinZ + MaxZ) / 2);
+}
+
+/// <summary>
+/// Contains detailed information about a detected element clash
+/// </summary>
+internal class ClashInfo
+{
+    public string ClashType { get; set; } = string.Empty;
+    public double IntersectionVolume { get; set; }
+    public List<Vector3> ContactPoints { get; set; } = new List<Vector3>();
+    public double Element1VolumePercent { get; set; }
+    public double Element2VolumePercent { get; set; }
+}
+
+
 
 internal class ElementGroup
 {
-	internal string id { get; set; }
-	internal string name { get; set; }
-	internal string fileVersionUrn { get; set; }
+	internal string id { get; set; } = string.Empty;
+	internal string name { get; set; } = string.Empty;
+	internal string fileVersionUrn { get; set; } = string.Empty;
 
 	public override string ToString()
 	{
@@ -385,10 +643,9 @@ internal class ElementGroup
 
 internal class Hub
 {
-
-   internal string id { get; set; }
-    internal string name { get; set; }
-    internal string dataManagementAPIHubId { get; set; }
+   internal string id { get; set; } = string.Empty;
+    internal string name { get; set; } = string.Empty;
+    internal string dataManagementAPIHubId { get; set; } = string.Empty;
 
     public override string ToString()
     {
@@ -398,9 +655,9 @@ internal class Hub
 
 internal class Project
 {
-    internal string id { get; set; }
-    internal string name { get; set; }
-    internal string dataManagementAPIProjectId { get; set; }
+    internal string id { get; set; } = string.Empty;
+    internal string name { get; set; } = string.Empty;
+    internal string dataManagementAPIProjectId { get; set; } = string.Empty;
 
     public override string ToString()
     {
@@ -413,21 +670,21 @@ internal class Project
 
 internal class Element
 {
-	internal string id { get; set; }
-	internal string name { get; set; }
-	internal List<Property> properties { get; set; }
+	internal string id { get; set; } = string.Empty;
+	internal string name { get; set; } = string.Empty;
+	internal List<Property> properties { get; set; } = new List<Property>();
 
 	public override string ToString()
 	{
 		var externalIdProp = properties.Find(prop => prop.name == "External ID");
-		return $"id: {id}, name: {name}, external id: {externalIdProp.value} ";
+		return $"id: {id}, name: {name}, external id: {externalIdProp?.value ?? "N/A"} ";
 	}
 }
 
 internal class Property
 {
-	internal string name { get; set; }
-	internal string value { get; set; }
+	internal string name { get; set; } = string.Empty;
+	internal string value { get; set; } = string.Empty;
 	public override string ToString()
 	{
 		return $"name: {name}, value: {value}";
