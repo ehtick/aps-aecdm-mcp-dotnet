@@ -25,16 +25,16 @@ if (httpMode)
 {
     // HTTP mode - run web server on http://127.0.0.1:4000/mcp/
     var builder = WebApplication.CreateBuilder(args);
-    
+
     // Configure the server to listen on the specified URL
     builder.WebHost.UseUrls("http://127.0.0.1:4000");
-    
+
     // Add MCP server services for HTTP mode
     builder.Services.AddMcpServer()
         .WithToolsFromAssembly();
-    
+
     var app = builder.Build();
-    
+
     // Add MCP protocol endpoints
     app.MapPost("/mcp/", async (HttpContext context) =>
     {
@@ -43,12 +43,12 @@ if (httpMode)
             // Read the JSON-RPC request
             using var reader = new StreamReader(context.Request.Body);
             var requestBody = await reader.ReadToEndAsync();
-            
+
             // Parse and handle the MCP request
             var jsonRequest = JObject.Parse(requestBody);
             var method = jsonRequest["method"]?.ToString();
             var idToken = jsonRequest["id"];
-            
+
             // Convert JToken id to proper type (string, number, or null)
             object? id = null;
             if (idToken != null)
@@ -60,7 +60,7 @@ if (httpMode)
                 else if (idToken.Type == JTokenType.Float)
                     id = idToken.ToObject<double>();
             }
-            
+
             // Handle the request and create proper JSON-RPC response
             if (string.IsNullOrEmpty(method))
             {
@@ -73,10 +73,10 @@ if (httpMode)
                 context.Response.ContentType = "application/json";
                 return Results.Json(errorResponse);
             }
-            
+
             object? result = null;
             object? error = null;
-            
+
             switch (method)
             {
                 case "initialize":
@@ -95,7 +95,7 @@ if (httpMode)
                         }
                     };
                     break;
-                    
+
                 case "tools/list":
                     result = new
                     {
@@ -143,60 +143,75 @@ if (httpMode)
                             new
                             {
                                 name = "GetElementsByCategory",
-                                description = "Get the Elements from the ElementGroup/Design using a category filter. Possible categories are: Walls, Windows, Floors, Doors, Furniture, Ceilings, Electrical Equipment",
+                                description = "Get the Elements from the ElementGroup/Design using a category filter. IMPORTANT: Only accepts ElementGroup ID, NOT file version URN. Possible categories are: Walls, Windows, Floors, Doors, Furniture, Ceilings, Electrical Equipment",
                                 inputSchema = new
                                 {
                                     type = "object",
                                     properties = new
                                     {
-                                        elementGroupUrn = new { type = "string", description = "The element group URN" },
+                                        elementGroupId = new { type = "string", description = "ElementGroup ID (NOT file version URN) - get this from the GetFiles tool" },
                                         category = new { type = "string", description = "Element category filter" }
                                     },
-                                    required = new[] { "elementGroupUrn", "category" }
+                                    required = new[] { "elementGroupId", "category" }
                                 }
                             },
                             new
                             {
                                 name = "GetElementsByFilter",
-                                description = "Get the Elements from the ElementGroup/Design using a filter. The filter is a string that will be used in the GraphQL query. For example: 'property.name.category'=='Walls' and 'property.name.Element Context'=='Instance'",
+                                description = "Get the Elements from the ElementGroup/Design using a filter. IMPORTANT: Only accepts ElementGroup ID, NOT file version URN. The filter is a string that will be used in the GraphQL query. For example: 'property.name.category'=='Walls' and 'property.name.Element Context'=='Instance'",
                                 inputSchema = new
                                 {
                                     type = "object",
                                     properties = new
                                     {
-                                        elementGroupUrn = new { type = "string", description = "The element group URN" },
+                                        elementGroupId = new { type = "string", description = "ElementGroup ID (NOT file version URN) - get this from the GetFiles tool" },
                                         filter = new { type = "string", description = "GraphQL filter expression" }
                                     },
-                                    required = new[] { "elementGroupUrn", "filter" }
+                                    required = new[] { "elementGroupId", "filter" }
                                 }
                             },
                             new
                             {
                                 name = "ExportIfc",
-                                description = "Export Ifc file for the selected element",
+                                description = "Export IFC file for multiple selected elements (supports both single element and array of elements)",
                                 inputSchema = new
                                 {
                                     type = "object",
                                     properties = new
                                     {
-                                        elementUrn = new { type = "string", description = "The element URN" }
+                                        elementIds = new { 
+                                            type = "array", 
+                                            items = new { type = "string" },
+                                            description = "Array of element IDs to export to IFC file" 
+                                        },
+                                        fileName = new { 
+                                            type = "string", 
+                                            description = "Optional filename for the exported IFC file" 
+                                        }
                                     },
-                                    required = new[] { "elementUrn" }
+                                    required = new[] { "elementIds" }
                                 }
                             },
                             new
                             {
                                 name = "PerformClashDetection",
-                                description = "Perform accurate clash detection analysis between selected building elements",
+                                description = "Perform accurate clash detection analysis between multiple building elements",
                                 inputSchema = new
                                 {
                                     type = "object",
                                     properties = new
                                     {
-                                        elementUrn1 = new { type = "string", description = "First element URN" },
-                                        elementUrn2 = new { type = "string", description = "Second element URN" }
+                                        elementIds = new { 
+                                            type = "array", 
+                                            items = new { type = "string" },
+                                            description = "Array of element IDs to analyze for clashes (minimum 2 elements required)" 
+                                        },
+                                        clashThreshold = new { 
+                                            type = "number", 
+                                            description = "Minimum clash volume threshold in cubic units (default: 0.01)" 
+                                        }
                                     },
-                                    required = new[] { "elementUrn1", "elementUrn2" }
+                                    required = new[] { "elementIds" }
                                 }
                             },
                             new
@@ -258,16 +273,16 @@ if (httpMode)
                         }
                     };
                     break;
-                    
+
                 case "tools/call":
                     result = await HandleToolCall(jsonRequest);
                     break;
-                    
+
                 default:
                     error = new { code = -32601, message = "Method not found" };
                     break;
             }
-            
+
             // Create proper JSON-RPC response
             object response;
             if (error != null)
@@ -288,7 +303,7 @@ if (httpMode)
                     result = result
                 };
             }
-            
+
             context.Response.ContentType = "application/json";
             return Results.Json(response);
         }
@@ -303,7 +318,7 @@ if (httpMode)
             return Results.Json(errorResponse);
         }
     });
-    
+
     // Add info endpoint (GET)
     app.MapGet("/mcp/", () => Results.Json(new
     {
@@ -316,25 +331,25 @@ if (httpMode)
         protocol = "JSON-RPC 2.0",
         methods = new[] { "initialize", "tools/list", "tools/call" }
     }));
-    
+
     app.MapGet("/mcp/health", () => Results.Json(new { status = "healthy", timestamp = DateTime.UtcNow }));
-    
+
     Console.WriteLine("MCP Server running in HTTP mode on http://127.0.0.1:4000/mcp/");
     await app.RunAsync();
 }
 else
 {
     // Default STDIO mode - original MCP server behavior
-var builder = Host.CreateEmptyApplicationBuilder(settings: null);
+    var builder = Host.CreateEmptyApplicationBuilder(settings: null);
 
-builder.Services.AddMcpServer()
-		.WithStdioServerTransport()
-		.WithToolsFromAssembly();
+    builder.Services.AddMcpServer()
+            .WithStdioServerTransport()
+            .WithToolsFromAssembly();
 
-var app = builder.Build();
+    var app = builder.Build();
 
     Console.WriteLine("MCP Server running in STDIO mode");
-await app.RunAsync();
+    await app.RunAsync();
 }
 
 // Tool execution handler for HTTP mode
@@ -345,7 +360,7 @@ static async Task<object> HandleToolCall(JObject request)
         var paramsObj = request["params"] as JObject;
         var toolName = paramsObj?["name"]?.ToString();
         var arguments = paramsObj?["arguments"] as JObject;
-        
+
         if (string.IsNullOrEmpty(toolName))
         {
             return new
@@ -360,7 +375,21 @@ static async Task<object> HandleToolCall(JObject request)
                 }
             };
         }
-        
+
+        // Helper method to extract string array from JObject
+        static string[] ExtractStringArray(JToken? token)
+        {
+            if (token == null) return new string[0];
+            
+            if (token is JArray array)
+            {
+                return array.Select(t => t.ToString()).ToArray();
+            }
+            
+            // If it's a single string, convert to array
+            return new string[] { token.ToString() };
+        }
+
         // Execute the tool based on the name
         string result = toolName switch
         {
@@ -369,33 +398,35 @@ static async Task<object> HandleToolCall(JObject request)
             "GetProjects" => await mcp_server_aecdm.Tools.AECDMTools.GetProjects(arguments?["hubId"]?.ToString() ?? ""),
             "GetFiles" => await mcp_server_aecdm.Tools.AECDMTools.GetElementGroupsByProject(arguments?["projectId"]?.ToString() ?? ""),
             "GetElementsByCategory" => await mcp_server_aecdm.Tools.AECDMTools.GetElementsByElementGroupWithCategoryFilter(
-                arguments?["elementGroupUrn"]?.ToString() ?? "",
+                arguments?["elementGroupId"]?.ToString() ?? "",
                 arguments?["category"]?.ToString() ?? ""),
             "GetElementsByFilter" => "Error: GetElementsByFilter tool is not available. Use GetElementsByCategory instead.",
             "ExportIfc" => await mcp_server_aecdm.Tools.AECDMTools.ExportIfcForElements(
-                new string[] { arguments?["elementUrn"]?.ToString() ?? "" }),
+                ExtractStringArray(arguments?["elementIds"]),
+                arguments?["fileName"]?.ToString()),
             "PerformClashDetection" => await mcp_server_aecdm.Tools.AECDMTools.ClashDetectForElements(
-                new string[] { arguments?["elementUrn1"]?.ToString() ?? "", arguments?["elementUrn2"]?.ToString() ?? "" }),
-            
+                ExtractStringArray(arguments?["elementIds"]),
+                arguments?["clashThreshold"]?.ToObject<double>() ?? 0.01),
+
             // AuthTools
             "GetToken" => await mcp_server_aecdm.Tools.AuthTools.GetToken(),
-            
+
             // DMTools
             "UploadFileToDocs" => await mcp_server_aecdm.Tools.DMTools.UploadFileToDocs(
                 arguments?["localFilePath"]?.ToString() ?? "",
                 arguments?["hubId"]?.ToString() ?? "",
                 arguments?["projectId"]?.ToString() ?? "",
                 arguments?["folderId"]?.ToString()),
-            
+
             // ViewerTool
             "HighLightElements" => await mcp_server_aecdm.ViewerTool.HighLightElements(
                 arguments?["externalIds"]?.ToObject<string[]>() ?? new string[0]),
             "RenderModel" => await mcp_server_aecdm.ViewerTool.RenderModel(
                 arguments?["fileVersionUrn"]?.ToString() ?? ""),
-            
+
             _ => $"Error: Unknown tool '{toolName}'"
         };
-        
+
         return new
         {
             content = new[]
