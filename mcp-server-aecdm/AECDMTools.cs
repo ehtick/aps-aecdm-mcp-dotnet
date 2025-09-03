@@ -253,27 +253,38 @@ public static class AECDMTools
 	}
 
 
-    [McpServerTool, Description("Get the Elements from the ElementGroup/Design using a filter. The filter is a string that will be used in the GraphQL query. For example: 'property.name.category'=='Walls' and 'property.name.Element Context'=='Instance'")]
+    [McpServerTool, Description("Export IFC file for elements from the ElementGroup/Design using multiple category filters")]
     public static async Task<string> ExportIfcForElementGroup(
         [Description("ElementGroup id, not the file version urn")] string elementGroupId,
-        [Description("Category name to be used as filter. Possible categories are: Walls, Windows, Floors, Doors, Furniture, Roofs, Ceilings, Electrical Equipment, Structural Framing, Structural Columns, Structural Rebar")] string category,
+        [Description("Array of category names to be used as filter. Possible categories are: Walls, Windows, Floors, Doors, Furniture, Roofs, Ceilings, Electrical Equipment, Structural Framing, Structural Columns, Structural Rebar")] string[] categories,
         [Description("File name of this exported IFC file.")] string? fileName = null)
     {
         string path = string.Empty;
         try
         {
             var elementGroup = Autodesk.Data.DataModels.ElementGroup.Create(Global.SDKClient);
-            var aecdmService = new AECDMService(Global.SDKClient);
+            // Build filter dynamically based on categories parameter
+            var categoryFilters = categories.Select(category => 
+                ElementPropertyFilter.AllOf(
+                    ElementPropertyFilter.Property("category", "==", category),
+                    ElementPropertyFilter.Property("Element Context", "==", "Instance")
+                )
+            ).ToArray();
 
-            List<AECDMElement> elements = await aecdmService.GetAllElementsByElementGroupParallelAsync(elementGroupId);
-            var newElements = elements.ToList().Where(el =>
+            // Create the combined filter using AnyOf for multiple categories
+            var filter = categoryFilters.Length > 1 
+                ? ElementPropertyFilter.AnyOf(categoryFilters) 
+                : categoryFilters.FirstOrDefault();
+
+            if (filter != null)
             {
-                var propCategory = el.Properties.Results.Where(prop => prop.Name == "Revit Category Type Id").ToList();
-                var propContext = el.Properties.Results.Where(prop => prop.Name == "Element Context").ToList();
-                return (propCategory.Count > 0 && propContext.Count > 0 && propContext[0].Value == "Instance" && propCategory[0].Value == category);
-            }).ToList();
+                await elementGroup.GetElementsAsync(elementGroupId, filter);
+            }
+            else
+            {
+                throw new ArgumentException("At least one category must be provided");
+            }
 
-            elementGroup.AddAECDMElements(newElements);
             path = await elementGroup.ConvertToIfc(ifcFileId: fileName);
         }
         catch (Exception ex)
@@ -296,18 +307,7 @@ public static class AECDMTools
 		try
         {
             var elementGroup = Autodesk.Data.DataModels.ElementGroup.Create(Global.SDKClient);
-            var aecdmService = new AECDMService(Global.SDKClient);
-
-            List<AECDMElement> elements = new List<AECDMElement>();
-			var tasks = elementIds.ToList().Select(async (item) =>
-			{
-				var element = await aecdmService.GetElementData(item);
-				elements.Add(element.Data.ElementAtTip);
-			});
-			await Task.WhenAll(tasks);
-
-			// Alternatively, add elements in a batch
-			elementGroup.AddAECDMElements(elements);
+            await elementGroup.GetElementsAsync(elementIds);
             path = await elementGroup.ConvertToIfc( ifcFileId:fileName );
         }
         catch (Exception ex)
@@ -333,20 +333,7 @@ public static class AECDMTools
         try
         {
             var elementGroup = Autodesk.Data.DataModels.ElementGroup.Create(Global.SDKClient);
-            var aecdmService = new AECDMService(Global.SDKClient);
-
-            List<AECDMElement> elements = new List<AECDMElement>();
-            var tasks = elementIds.ToList().Select(async (item) =>
-            {
-                var element = await aecdmService.GetElementData(item);
-                elements.Add(element.Data.ElementAtTip);
-            });
-            await Task.WhenAll(tasks);
-
-            // Add elements to element group
-            elementGroup.AddAECDMElements(elements);
-            
-            // Get ElementGeometriesAsMesh
+            await elementGroup.GetElementsAsync(elementIds);
             var ElementGeomMap = await elementGroup.GetElementGeometriesAsMeshAsync().ConfigureAwait(false);
 
             // Create element bounding boxes for clash detection analysis

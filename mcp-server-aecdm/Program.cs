@@ -194,6 +194,32 @@ if (httpMode)
                             },
                             new
                             {
+                                name = "ExportIfcForElementGroup",
+                                description = "Export IFC file for elements from the ElementGroup/Design using multiple category filters",
+                                inputSchema = new
+                                {
+                                    type = "object",
+                                    properties = new
+                                    {
+                                        elementGroupId = new { 
+                                            type = "string", 
+                                            description = "ElementGroup id, not the file version urn" 
+                                        },
+                                        categories = new { 
+                                            type = "array", 
+                                            items = new { type = "string" },
+                                            description = "Array of category names to filter. Possible values: Walls, Windows, Floors, Doors, Furniture, Roofs, Ceilings, Electrical Equipment, Structural Framing, Structural Columns, Structural Rebar" 
+                                        },
+                                        fileName = new { 
+                                            type = "string", 
+                                            description = "Optional filename for the exported IFC file" 
+                                        }
+                                    },
+                                    required = new[] { "elementGroupId", "categories" }
+                                }
+                            },
+                            new
+                            {
                                 name = "PerformClashDetection",
                                 description = "Perform accurate clash detection analysis between multiple building elements",
                                 inputSchema = new
@@ -403,6 +429,10 @@ static async Task<object> HandleToolCall(JObject request)
             "GetElementsByFilter" => "Error: GetElementsByFilter tool is not available. Use GetElementsByCategory instead.",
             "ExportIfc" => await mcp_server_aecdm.Tools.AECDMTools.ExportIfcForElements(
                 ExtractStringArray(arguments?["elementIds"]),
+                arguments?["fileName"]?.ToString()),
+            "ExportIfcForElementGroup" => await mcp_server_aecdm.Tools.AECDMTools.ExportIfcForElementGroup(
+                arguments?["elementGroupId"]?.ToString() ?? "",
+                ExtractStringArray(arguments?["categories"]),
                 arguments?["fileName"]?.ToString()),
             "PerformClashDetection" => await mcp_server_aecdm.Tools.AECDMTools.ClashDetectForElements(
                 ExtractStringArray(arguments?["elementIds"]),
