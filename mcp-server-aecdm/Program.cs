@@ -172,28 +172,6 @@ if (httpMode)
                             },
                             new
                             {
-                                name = "ExportIfc",
-                                description = "Export IFC file for multiple selected elements (supports both single element and array of elements)",
-                                inputSchema = new
-                                {
-                                    type = "object",
-                                    properties = new
-                                    {
-                                        elementIds = new { 
-                                            type = "array", 
-                                            items = new { type = "string" },
-                                            description = "Array of element IDs to export to IFC file" 
-                                        },
-                                        fileName = new { 
-                                            type = "string", 
-                                            description = "Optional filename for the exported IFC file" 
-                                        }
-                                    },
-                                    required = new[] { "elementIds" }
-                                }
-                            },
-                            new
-                            {
                                 name = "ExportIfcForElementGroup",
                                 description = "Export IFC file for elements from the ElementGroup/Design using multiple category filters",
                                 inputSchema = new
@@ -294,6 +272,25 @@ if (httpMode)
                                         fileVersionUrn = new { type = "string", description = "URN used to render the model with Viewer" }
                                     },
                                     required = new[] { "fileVersionUrn" }
+                                }
+                            },
+                            new
+                            {
+                                name = "FindSpecificElementsContainedWithin",
+                                description = "Find specific elements by their AEC DM element IDs that are spatially contained inside a given container element using mesh geometry analysis",
+                                inputSchema = new
+                                {
+                                    type = "object",
+                                    properties = new
+                                    {
+                                        containerElementId = new { type = "string", description = "AEC DM Element ID of the container element that will be used to check containment" },
+                                        elementIds = new { 
+                                            type = "array", 
+                                            items = new { type = "string" },
+                                            description = "Array of AEC DM element IDs to check for containment within the container" 
+                                        }
+                                    },
+                                    required = new[] { "containerElementId", "elementIds" }
                                 }
                             }
                         }
@@ -427,9 +424,6 @@ static async Task<object> HandleToolCall(JObject request)
                 arguments?["elementGroupId"]?.ToString() ?? "",
                 arguments?["category"]?.ToString() ?? ""),
             "GetElementsByFilter" => "Error: GetElementsByFilter tool is not available. Use GetElementsByCategory instead.",
-            "ExportIfc" => await mcp_server_aecdm.Tools.AECDMTools.ExportIfcForElements(
-                ExtractStringArray(arguments?["elementIds"]),
-                arguments?["fileName"]?.ToString()),
             "ExportIfcForElementGroup" => await mcp_server_aecdm.Tools.AECDMTools.ExportIfcForElementGroup(
                 arguments?["elementGroupId"]?.ToString() ?? "",
                 ExtractStringArray(arguments?["categories"]),
@@ -453,6 +447,9 @@ static async Task<object> HandleToolCall(JObject request)
                 arguments?["externalIds"]?.ToObject<string[]>() ?? new string[0]),
             "RenderModel" => await mcp_server_aecdm.ViewerTool.RenderModel(
                 arguments?["fileVersionUrn"]?.ToString() ?? ""),
+            "FindSpecificElementsContainedWithin" => await mcp_server_aecdm.Tools.AECDMTools.FindSpecificElementsContainedWithin(
+                arguments?["containerElementId"]?.ToString() ?? "",
+                ExtractStringArray(arguments?["elementIds"])),
 
             _ => $"Error: Unknown tool '{toolName}'"
         };

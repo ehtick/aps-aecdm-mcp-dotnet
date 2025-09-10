@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Autodesk.Authentication" Version="2.0.1" />
-    <PackageReference Include="Autodesk.Data" Version="0.1.3-beta" />
+    <PackageReference Include="Autodesk.Data" Version="0.1.5-beta" />
     <PackageReference Include="Autodesk.Data.GeometryDefinitions" Version="0.1.8" />
     <PackageReference Include="Autodesk.DataManagement" Version="2.0.1" />
     <PackageReference Include="Autodesk.Oss" Version="2.2.3" />
