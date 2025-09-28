@@ -3,7 +3,9 @@
     "mcp-server-aecdm": {
       "commandName": "Project",
       "environmentVariables": {
-        "CLIENT_ID": "YOUR CLIENT ID HERE (PKCE FLOW)"
+        "CLIENT_ID": "YOUR CLIENT ID HERE(use staging if try with AA)",
+        "CLIENT_SECRET": "YOUR CLIENT SECRET HERE(use staging if try with AA)",
+        "CALLBACK_URL": "http://localhost:8080/api/auth/callback/",
       }
     }
   }
